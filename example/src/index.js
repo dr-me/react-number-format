@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
+import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import NumberFormat from '../../src/number_format';
+import TextField from 'material-ui/TextField';
 
 class App extends React.Component {
   constructor() {
@@ -46,9 +48,29 @@ class App extends React.Component {
 
         <div className="example">
           <h3>
+            Decimal precision : Format currency in input with decimal precision
+          </h3>
+          <NumberFormat thousandSeparator={true} decimalPrecision={true} prefix={'$'}/>
+        </div>
+
+
+        <div className="example">
+          <h3>
             Custom thousand seperator : Format currency in input
           </h3>
-          <NumberFormat thousandSeparator={'.'} decimalSeparator={','} prefix={'$'} />
+          <div>
+            ThousandSeperator: '.', decimalSeparator=','
+          </div>
+          <div>
+            <NumberFormat thousandSeparator={"."} decimalSeparator={','} prefix={'$'} />
+          </div>
+          <br/>
+          <div>
+            ThousandSeperator: ' ', decimalSeparator='.'
+          </div>
+          <div>
+            <NumberFormat thousandSeparator={" "} decimalSeparator={'.'} prefix={'$'} />
+          </div>
         </div>
 
         <div className="example">
@@ -71,10 +93,23 @@ class App extends React.Component {
           </h3>
           <NumberFormat format={this.formatExpiryChange}/>
         </div>
+
+        <div className="example">
+          <h3>
+            Custom input : Format credit card number
+          </h3>
+          <NumberFormat customInput={TextField} format="#### #### #### ####"/>
+        </div>
+
       </div>
     )
   }
 }
 
+const ThemedApp = () => {
+  return (<MuiThemeProvider>
+    <App />
+  </MuiThemeProvider>);
+};
 
-ReactDOM.render(<App />, document.getElementById('app'));
+ReactDOM.render(<ThemedApp />, document.getElementById('app'));

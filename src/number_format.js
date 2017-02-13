@@ -6,8 +6,9 @@ function escapeRegExp(str) {
 }
 
 const propTypes = {
-  thousandSeparator: PropTypes.oneOf([',', '.', true, false]),
-  decimalSeparator: PropTypes.oneOf([',', '.', true, false]),
+  thousandSeparator: PropTypes.oneOfType([PropTypes.string, PropTypes.bool]),
+  decimalSeparator: PropTypes.oneOfType([PropTypes.string, PropTypes.bool]),
+  decimalPrecision: PropTypes.oneOfType([PropTypes.number, PropTypes.bool]),
   displayType: PropTypes.oneOf(['input', 'text']),
   prefix: PropTypes.string,
   suffix: PropTypes.string,
@@ -19,12 +20,14 @@ const propTypes = {
   value: PropTypes.oneOfType([
     PropTypes.number,
     PropTypes.string
-  ])
+  ]),
+  customInput: PropTypes.any
 };
 
 const defaultProps = {
   displayType: 'input',
-  decimalSeparator: '.'
+  decimalSeparator: '.',
+  decimalPrecision: false
 };
 
 class NumberFormat extends React.Component {
@@ -35,6 +38,7 @@ class NumberFormat extends React.Component {
     }
     this.onChange = this.onChange.bind(this);
     this.onInput = this.onInput.bind(this);
+    this.onKeyDown = this.onKeyDown.bind(this);
   }
 
   componentWillReceiveProps(newProps) {
@@ -51,8 +55,8 @@ class NumberFormat extends React.Component {
       thousandSeparator = ','
     }
 
-    if (decimalSeparator && thousandSeparator) {
-      decimalSeparator = thousandSeparator === ',' ? '.' : ',';
+    if (decimalSeparator && thousandSeparator && typeof decimalSeparator !== 'string') {
+      decimalSeparator = thousandSeparator === '.' ? ',' : '.';
     }
 
     if (decimalSeparator === true) {
@@ -65,13 +69,17 @@ class NumberFormat extends React.Component {
     }
   }
 
-  getNumberRegex(g) {
+  getNumberRegex(g, ignoreDecimalSeperator) {
     const {decimalSeparator} = this.getSeparators();
-    return new RegExp('\\d' + (decimalSeparator ? '|' + escapeRegExp(decimalSeparator) : ''), g ? 'g' : undefined);
+    return new RegExp('\\d' + (decimalSeparator && !ignoreDecimalSeperator ? '|' + escapeRegExp(decimalSeparator) : ''), g ? 'g' : undefined);
+  }
+
+  getInput() {
+    return this.props.customInput ? document.activeElement : this.refs.input;
   }
 
   setCaretPosition(caretPos) {
-    const el = this.refs.input;
+    const el = this.getInput();
       el.value = el.value;
       // ^ this is used to not only get "focus", but
       // to make sure we don't have it everything -selected-
@@ -121,7 +129,8 @@ class NumberFormat extends React.Component {
 
   formatInput(val) {
     const {prefix, suffix, mask, format} = this.props;
-    const {thousandSeparator, decimalSeparator} = this.getSeparators()
+    const {thousandSeparator, decimalSeparator} = this.getSeparators();
+    const {decimalPrecision} = this.props;
     const maskPattern = format && typeof format == 'string' && !!mask;
 
     const numRegex = this.getNumberRegex(true);
@@ -144,9 +153,15 @@ class NumberFormat extends React.Component {
     }
     else{
       let beforeDecimal = formattedValue, afterDecimal = '';
-      const hasDecimals = formattedValue.indexOf(decimalSeparator) !== -1;
+      const hasDecimals = formattedValue.indexOf(decimalSeparator) !== -1 || decimalPrecision !== false;
       if(decimalSeparator && hasDecimals) {
-        const parts = formattedValue.split(decimalSeparator)
+        let parts;
+        if (decimalPrecision !== false) {
+          const precision = decimalPrecision === true ? 2 : decimalPrecision;
+          parts = parseFloat(formattedValue).toFixed(precision).split(decimalSeparator);
+        } else {
+          parts = formattedValue.split(decimalSeparator);
+        }
         beforeDecimal = parts[0];
         afterDecimal = parts[1];
       }
@@ -157,7 +172,7 @@ class NumberFormat extends React.Component {
       if(prefix) beforeDecimal = prefix + beforeDecimal;
       if(suffix) afterDecimal = afterDecimal + suffix;
 
-      formattedValue = beforeDecimal + (hasDecimals && decimalSeparator || '') + afterDecimal;
+      formattedValue = beforeDecimal + (hasDecimals && decimalSeparator ||  '') + afterDecimal;
     }
 
     return {
@@ -176,11 +191,6 @@ class NumberFormat extends React.Component {
       j++;
     }
 
-    //check if there is no number before caret position
-    while(j > 0 && formattedValue[j]){
-      if(!formattedValue[j-1].match(numRegex)) j--;
-      else break;
-    }
     return j;
   }
 
@@ -188,7 +198,8 @@ class NumberFormat extends React.Component {
     e.persist();
     const inputValue = e.target.value;
     const {formattedValue,value} = this.formatInput(inputValue);
-    let cursorPos = this.refs.input.selectionStart;
+    const el = this.getInput();
+    let cursorPos = el.selectionStart;
 
     //change the state
     this.setState({value : formattedValue},()=>{
@@ -206,6 +217,29 @@ class NumberFormat extends React.Component {
   onInput(e) {
     this.onChangeHandler(e,this.props.onInput);
   }
+  onKeyDown(e) {
+    const el = this.getInput();
+    const {selectionStart, selectionEnd, value} = el;
+    const {decimalPrecision} = this.props;
+    const {key} = e;
+    const numRegex = this.getNumberRegex(false, decimalPrecision !== false);
+    //Handle backspace and delete against non numerical/decimal characters
+    if(selectionEnd - selectionStart === 0) {
+      if (key === 'Delete' && !numRegex.test(value[selectionStart])) {
+        e.preventDefault();
+        let nextCursorPosition = selectionStart;
+        while (!numRegex.test(value[nextCursorPosition]) && nextCursorPosition < value.length) nextCursorPosition++;
+        this.setCaretPosition(nextCursorPosition);
+      } else if (key === 'Backspace' && !numRegex.test(value[selectionStart - 1])) {
+        e.preventDefault();
+        let prevCursorPosition = selectionStart;
+        while (!numRegex.test(value[prevCursorPosition - 1]) && prevCursorPosition > 0) prevCursorPosition--;
+        this.setCaretPosition(prevCursorPosition);
+      }
+    }
+
+    if (this.props.onKeyDown) this.props.onKeyDown(e);
+  }
   render() {
     const props = Object.assign({}, this.props);
 
@@ -213,18 +247,31 @@ class NumberFormat extends React.Component {
       delete props[key];
     });
 
+    const inputProps = Object.assign({}, props, {
+      type:'tel',
+      value:this.state.value,
+      onInput:this.onChange,
+      onChange:this.onChange,
+      onKeyDown:this.onKeyDown,
+    })
 
-    if(this.props.displayType === 'text'){
+    if( this.props.displayType === 'text'){
       return (<span {...props}>{this.state.value}</span>);
     }
+
+    else if (this.props.customInput) {
+      const CustomInput = this.props.customInput;
+      return (
+        <CustomInput
+          {...inputProps}
+        />
+      )
+    }
+
     return (
       <input
-        {...props}
-        type="tel"
-        value={this.state.value}
+        {...inputProps}
         ref="input"
-        onInput={this.onChange}
-        onChange={this.onChange}
       />
     )
   }
